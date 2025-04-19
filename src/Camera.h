@@ -70,7 +70,7 @@ void MainCamControls(Camera& camera, float dt, Player& player, int mode = 0) {
             while (angleDiff > 180.0f) angleDiff -= 360.0f;
 
             // Smoothly interpolate camera yaw towards the player's facing direction
-            yaw += angleDiff * 8.0f * dt; // Adjust lerp speed (8.0f) as needed
+            yaw += angleDiff * 1.0f * dt; // Adjust lerp speed (8.0f) as needed
 
             // Keep pitch controlled by mouse
             Vector2 mouseDelta = GetMouseDelta();
@@ -80,8 +80,8 @@ void MainCamControls(Camera& camera, float dt, Player& player, int mode = 0) {
         else {
             // --- Manual Orbit Camera Logic (when not moving) ---
             Vector2 mouseDelta = GetMouseDelta();
-            yaw += mouseDelta.x * 0.1f;
-            pitch -= mouseDelta.y * 0.1f;
+            yaw -= mouseDelta.x * 0.1f;
+            pitch += mouseDelta.y * 0.1f;
         }
 
         // Constrain pitch (apply in both cases)
@@ -96,7 +96,7 @@ void MainCamControls(Camera& camera, float dt, Player& player, int mode = 0) {
         // 4. Calculate Ideal Camera Position
         Vector3 idealPosition;
         idealPosition.x = camera.target.x - camdistance * cos(DEG2RAD * pitch) * sin(DEG2RAD * yaw);
-        idealPosition.y = camera.target.y - camdistance * sin(DEG2RAD * pitch)+offsetY;
+        idealPosition.y = camera.target.y - camdistance * sin(DEG2RAD * pitch) + offsetY;
         idealPosition.z = camera.target.z - camdistance * cos(DEG2RAD * pitch) * cos(DEG2RAD * yaw);
 
         // 5. Smoothly Move Camera Position
@@ -108,58 +108,4 @@ void MainCamControls(Camera& camera, float dt, Player& player, int mode = 0) {
         if (camdistance < 2.0f) camdistance = 2.0f;
         if (camdistance > 20.0f) camdistance = 20.0f;
     }
-}
-Vector4 Vector4Transform(Vector4 v, Matrix m) {
-    Vector4 result = {
-        v.x * m.m0 + v.y * m.m4 + v.z * m.m8 + v.w * m.m12,
-        v.x * m.m1 + v.y * m.m5 + v.z * m.m9 + v.w * m.m13,
-        v.x * m.m2 + v.y * m.m6 + v.z * m.m10 + v.w * m.m14,
-        v.x * m.m3 + v.y * m.m7 + v.z * m.m11 + v.w * m.m15
-    };
-    return result;
-}
-
-Ray ScreenToWorld(Vector2 pos, Matrix view, Matrix projection) {
-    Matrix invView = MatrixInvert(view);
-    Matrix invProj = MatrixInvert(projection);
-
-    // Convert screen position to Normalized Device Coordinates (NDC)
-    Vector4 startNDC = {
-        (pos.x / (float)GetScreenWidth() - 0.5f) * 2.0f,
-        -((pos.y / (float)GetScreenHeight() - 0.5f) * 2.0f),
-        -1.0f,
-        1.0f
-    };
-
-    Vector4 endNDC = startNDC;
-    endNDC.z = 1.0f;
-
-    // Transform to camera space
-    Vector4 startCamera = Vector4Transform(startNDC, invProj);
-    Vector4 endCamera = Vector4Transform(endNDC, invProj);
-
-    // Perspective divide
-    startCamera.x /= startCamera.w;
-    startCamera.y /= startCamera.w;
-    startCamera.z /= startCamera.w;
-    startCamera.w = 1.0f;
-
-    endCamera.x /= endCamera.w;
-    endCamera.y /= endCamera.w;
-    endCamera.z /= endCamera.w;
-    endCamera.w = 1.0f;
-
-    // Transform to world space
-    Vector4 startWorld = Vector4Transform(startCamera, invView);
-    Vector4 endWorld = Vector4Transform(endCamera, invView);
-
-    // Build the ray
-    Vector3 origin = { startWorld.x, startWorld.y, startWorld.z };
-    Vector3 end = { endWorld.x,   endWorld.y,   endWorld.z };
-    Vector3 direction = Vector3Normalize(Vector3Subtract(end, origin));
-
-    Ray ray = { 0 };
-    ray.position = origin;
-    ray.direction = direction;
-    return ray;
 }

@@ -18,22 +18,33 @@ float yaw = 0.0f;  // Rotation around Y-axis (left/right)
 float pitch = 0.0f;  // Rotation around X-axis (up/down)
 float offsetY = 5.0f;
 float thickness = 10.0f;
+float glowIntensity = 0.5f;
+float quality = 0.1f;
+Vector4 neoncolor = { 0.0f, 1.0f, 0.0f, 1.0f }; // Neon color for the outline effect
+Vector3 normalizedColor = {
+      neoncolor.x / 255.0f,
+      neoncolor.y / 255.0f,
+      neoncolor.z / 255.0f
+};
 int main() {
-    InitWindow(1366, 800, "Grapple");
+    InitWindow(1920, 1080, "Grapple");
 
     // Model stuff
     Model arrow = LoadModel("resources/models/arrow/arrow.gltf"); // Load model
     RenderTexture2D target = LoadRenderTexture(GetScreenWidth(),GetScreenHeight()); // Create render texture
     //Shader stuff
-    Shader outline = LoadShader("src/outline.vert", "src/Hblur.frag");
-	
-    
-    
+    Shader outline = LoadShader(0,"src/Neon.frag");
+	//Texture stuff
+    Image img = LoadImage("resources/textures/heightmap.png");
+    ImageResize(&img, 256, 256);
+    Texture2D texture = LoadTextureFromImage(img);
+    cout << Vector3ToString({(float) img.width,(float)img.height,0 });
+
     //Player stuff
     vector<const char*>playerAnims;
     playerAnims.push_back("resources/models/player/Vampire/Idle.glb");
     playerAnims.push_back("resources/models/player/Vampire/Run.glb");
-    Player player1 = Player(playerAnims, { 0,0,0 }, {0.01f,0.01f,0.01f });
+    Player player1 = Player(playerAnims, { 0,105,0 }, {0.01f,0.01f,0.01f });
     player1.rotation = { 0,0,0 };
     player1.moveSpeed = 10.0f;
     player1.animIndex = 0;
@@ -49,6 +60,7 @@ int main() {
     camera.up = Vector3{ 0.0f, 1.0f, 0.0f };         // Camera up vector (rotation towards target)
     camera.fovy = 90.0f;                            // Camera field-of-view Y
     camera.projection = CAMERA_PERSPECTIVE;
+   
     float nearPlane = 0.1f;
     float farPlane = 1000.0f;
     Matrix model = MatrixIdentity();
@@ -57,29 +69,30 @@ int main() {
         (float)GetScreenWidth() / GetScreenHeight(),
         nearPlane,
         farPlane);
+    int cameraMode = 1;// Camera projection type
 
-    int cameraMode = 0;// Camera projection type
-    Block ground ={{0,-1,0},{100,1,100}};
+
+
+    //blocks
+    Block ground ={{0,-0.9,0},{100,10,100}};
 	ground.layer = 0;
 	ground.color = DARKGRAY;
 	ground.name = "Ground";
-	Block wall2 = { {0,0,-10},{1,2,1} };
+    ground.mesh = GenMeshHeightmap(img, ground.scale);
+    Block wall2 = { {0,0,-10},{1,2,1} };
 	Block wall3 = { {10,0,10},{1,2,1} };
 	vector<Block> blocks;
 	blocks.push_back(wall2);
 	blocks.push_back(wall3);
 	blocks.push_back(ground);
     Block* selectedBlock=nullptr;
+    Rope rope;
+	bool ropeActive = false;
     SetTargetFPS(120);
     while (!WindowShouldClose()) {
-        //shader
-        SetShaderValueMatrix(outline, GetShaderLocation(outline, "model"), model);
-        SetShaderValueMatrix(outline, GetShaderLocation(outline, "view"), view);
-        SetShaderValueMatrix(outline, GetShaderLocation(outline, "projection"), projection);
-        SetShaderValue(outline, GetShaderLocation(outline, "outlineThickness"), &thickness, SHADER_UNIFORM_FLOAT);
-        //player        
+       
+        player1.PlayerController(rope,camera);
         player1.Update(blocks);
-        player1.PlayerController();
         player1.shader = outline;
 
 
@@ -99,21 +112,29 @@ int main() {
         for (int i = 0; i < blocks.size(); i++) {
             blocks[i].Draw(); // Draw blocks
         }
-        if (selectedBlock != nullptr) {
-            DrawRope(player1.position, selectedBlock->position, 20);
-        }
-       
 		player1.Draw(); // Draw player
-        selectedBlock = onMouseCollision(blocks,GetScreenToWorldRay(GetMousePosition(),camera), camera);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            selectedBlock = onMouseCollision(blocks, GetScreenToWorldRay(GetMousePosition(), camera), camera);
+            if (selectedBlock != nullptr) {
+                rope.Init(50, player1.position, selectedBlock->position);
+                ropeActive = true;
+            }
+        }
+
+        if (ropeActive && selectedBlock != nullptr) {
+			BeginShaderMode(outline);
+            rope.Update(player1.position, selectedBlock->position);		
+            rope.OnRopeCollision(blocks);
+            rope.DrawRope();
+            EndShaderMode();
+        }
         EndMode3D();
         EndTextureMode(); // End render texture mode
         // Begin Drawing (apply postprocessing)
         BeginDrawing();
         ClearBackground(BLACK);
         DrawTextureRec(target.texture, { 0, 0, (float)target.texture.width, (float)-target.texture.height },  { 0, 0 }, WHITE); // Draw the render texture with applied shade
-        DrawSphere(player1.position, 5, RED);
-		if (selectedBlock != nullptr) {
-            DrawRope(player1.position, selectedBlock->position, 20);
+		if (selectedBlock != nullptr) { 
 			if (IsKeyPressed(KEY_E)) {
 				camera.target = { selectedBlock->position.x,selectedBlock->position.y,selectedBlock->position.z };
 			}
@@ -128,6 +149,9 @@ int main() {
         ShowBlocksUI(selectedBlock); // Show blocks UI
         ImGui::Begin("Camera");
         ImGui::SliderFloat("Offset Y", &offsetY, -10.0, 10.0);
+		ImGui::ColorEdit4("Outline Color", (float*)&neoncolor);
+		ImGui::SliderFloat("Glow Intensity", &glowIntensity, 0.0f, 100.0f);
+		ImGui::SliderFloat("Quality", &quality, 0.0f, 0.1f);
         ImGui::End();
         rlImGuiEnd();
 		DrawText(TextFormat("Camera Mode:%d", cameraMode), 10, 40, 20, WHITE); // Draw camera mode
